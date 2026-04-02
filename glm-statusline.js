@@ -5,6 +5,7 @@
  * Caches API results for 3 minutes.
  */
 
+const http = require('http');
 const https = require('https');
 const fs = require('fs');
 const os = require('os');
@@ -13,8 +14,8 @@ const path = require('path');
 const CACHE_TTL_MS = 3 * 60 * 1000;
 
 function simpleHash(s) {
-  var h = 0;
-  for (var i = 0; i < s.length; i++) {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) {
     h = ((h << 5) - h + s.charCodeAt(i)) | 0;
   }
   return (h >>> 0).toString(36);
@@ -37,9 +38,7 @@ function pad(n) { return String(n).padStart(2, '0'); }
 // ── Cache ─────────────────────────────────────────────
 function readCache() {
   try {
-    const raw = fs.readFileSync(CACHE_FILE, 'utf8');
-    const c = JSON.parse(raw);
-    if (Date.now() - c.ts < CACHE_TTL_MS) return c;
+    return JSON.parse(fs.readFileSync(CACHE_FILE, 'utf8'));
   } catch {}
   return null;
 }
@@ -54,12 +53,26 @@ function fetchJSON(apiPath) {
   const token = process.env.ANTHROPIC_AUTH_TOKEN || '';
   if (!base || !token) return Promise.resolve(null);
 
-  const { protocol, host } = new URL(base);
-  const url = new URL(apiPath, `${protocol}//${host}/`);
+  let parsed;
+  let url;
+  try {
+    parsed = new URL(base);
+    url = new URL(apiPath, base);
+  } catch {
+    return Promise.resolve(null);
+  }
+
+  if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
+    return Promise.resolve(null);
+  }
+
+  const isHttps = parsed.protocol === 'https:';
+  const httpModule = isHttps ? https : http;
+  const defaultPort = isHttps ? 443 : 80;
 
   return new Promise((resolve) => {
-    const req = https.request({
-      hostname: url.hostname, port: 443,
+    const req = httpModule.request({
+      hostname: url.hostname, port: url.port || defaultPort,
       path: url.pathname + url.search, method: 'GET',
       headers: { Authorization: token, 'Accept-Language': 'en-US,en' },
     }, (res) => {
@@ -84,20 +97,25 @@ async function fetchAll() {
   const [quotaRes, modelRes] = await Promise.all([
     fetchJSON('/api/monitor/usage/quota/limit'),
     fetchJSON('/api/monitor/usage/model-usage' + qp),
-    // fetchJSON('/api/monitor/usage/tool-usage' + qp),
   ]);
 
   return {
     fetchedAt,
     quota: quotaRes?.data || null,
     model: modelRes?.data || null,
-    // tool: toolRes?.data || null,
   };
 }
 
 // ── Formatters ────────────────────────────────────────
-function bar(pct, w) {
-  if (w === undefined) w = 10;
+function isSameDay(a, b) {
+  return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+}
+
+function fmtDate(d) {
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function bar(pct, w = 10) {
   const f = Math.min(w, Math.round((pct / 100) * w));
   return '\u2588'.repeat(f) + '\u2591'.repeat(w - f);
 }
@@ -105,20 +123,27 @@ function bar(pct, w) {
 function fmtResetTime(ms, skipDateIfToday) {
   if (!ms) return '';
   const d = new Date(ms);
-  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  if (skipDateIfToday) {
-    const now = new Date();
-    if (d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()) {
-      return time;
-    }
+  const now = new Date();
+  if (skipDateIfToday && isSameDay(d, now)) {
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
-  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${time}`;
+  if (d.getFullYear() === now.getFullYear()) {
+    return fmtDate(d);
+  }
+  return `${d.getFullYear()}-${fmtDate(d)}`;
 }
 
-function ago(ms) {
+function fmtFetchTime(ms) {
   if (!ms) return '';
-  const m = Math.floor((Date.now() - ms) / 60000);
-  return m < 1 ? 'just now' : `${m}min ago`;
+  const d = new Date(ms);
+  const now = new Date();
+  if (isSameDay(d, now)) {
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+  if (d.getFullYear() === now.getFullYear()) {
+    return fmtDate(d);
+  }
+  return `${d.getFullYear()}-${fmtDate(d)}`;
 }
 
 function fmtBar(label, limit) {
@@ -140,7 +165,6 @@ function joinLine(segments, pipe, sep) {
 // ── Render ────────────────────────────────────────────
 function render(entry) {
   const { fetchedAt, quota, model } = entry;
-  // const { tool } = entry;
   if (!quota) { process.stdout.write('GLM: quota unavailable'); return; }
 
   const sep = ` ${C.dim}｜${C.reset} `;
@@ -152,10 +176,10 @@ function render(entry) {
 
   const lines = [];
 
-  // Line 1: GLM PRO ｜ fetchedAt: 2min ago
+  // Line 1: GLM PRO ｜ fetchedAt: 14:30
   lines.push([
     `${C.bg(88, 166, 255)}${C.fg(0, 0, 0)}${C.bold} GLM ${level} ${C.reset}`,
-    `${C.dim}fetchedAt: ${ago(fetchedAt)}${C.reset}`,
+    `${C.dim}fetchedAt: ${fmtFetchTime(fetchedAt)}${C.reset}`,
   ].join(sep));
 
   // Line 2: 5h  usage ░░░ 1% | Tokens used today: 71,397,677 ｜ reset: 07:14
@@ -186,15 +210,32 @@ function render(entry) {
 
 // ── Main ──────────────────────────────────────────────
 async function main() {
-  let cached = readCache();
-  if (!cached) {
-    const data = await fetchAll();
-    if (data.quota) {
-      cached = { ts: Date.now(), fetchedAt: data.fetchedAt, quota: data.quota, model: data.model /*, tool: data.tool */ };
-      writeCache(cached);
-    }
+  const cached = readCache();
+  if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
+    render(cached);
+    return;
   }
-  render(cached || { fetchedAt: null, quota: null, model: null /*, tool: null */ });
+
+  const data = await fetchAll();
+
+  if (data.quota && data.model) {
+    const entry = { ts: Date.now(), fetchedAt: data.fetchedAt, quota: data.quota, model: data.model };
+    writeCache(entry);
+    render(entry);
+    return;
+  }
+
+  if (cached && cached.quota) {
+    render(cached);
+    return;
+  }
+
+  if (data.quota) {
+    render({ fetchedAt: data.fetchedAt, quota: data.quota, model: data.model });
+    return;
+  }
+
+  render({ fetchedAt: null, quota: null, model: null });
 }
 
 main();

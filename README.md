@@ -13,7 +13,7 @@
 ### 效果预览
 
 ```
- GLM PRO ｜ fetchedAt: 2min ago
+ GLM PRO ｜ fetchedAt: 14:30
  5h  usage ░░░░░░░░░░ 1% | Tokens used today: 71,397,677 ｜ reset: 07:14
  MCP calls ░░░░░░░░░░ 4% | (search 33 + web 7 + zread 0)/1000 ｜ reset: 04-30 23:54
 ```
@@ -24,8 +24,8 @@
 
 | 区域 | 内容 |
 |------|------|
-| **GLM PRO** | 蓝色徽章，标识套餐等级（PRO/LITE） |
-| **fetchedAt: 2min ago** | 数据刷新时间 |
+| **GLM PRO** | 蓝色徽章，标识套餐等级（MAX/PRO/LITE） |
+| **fetchedAt: 14:30** | 数据获取时间（同天显示 HH:MM，跨天显示 MM-DD HH:MM，跨年显示 YYYY-MM-DD HH:MM） |
 
 **第二行 — Token 额度 + 今日用量**
 
@@ -47,13 +47,12 @@
 
 ### 数据来源
 
-并行调用 GLM 平台 3 个 API（使用 `ANTHROPIC_AUTH_TOKEN` 和 `ANTHROPIC_BASE_URL` 环境变量）：
+并行调用 GLM 平台 2 个 API（使用 `ANTHROPIC_AUTH_TOKEN` 和 `ANTHROPIC_BASE_URL` 环境变量）：
 
 | API | 路径 | 提供数据 |
 |-----|------|----------|
 | Quota Limit | `/api/monitor/usage/quota/limit` | 套餐等级、5h Token 配额、MCP 月度调用配额、重置时间、MCP 明细 |
 | Model Usage | `/api/monitor/usage/model-usage` | 今日模型调用次数、Token 消耗量 |
-| Tool Usage | `/api/monitor/usage/tool-usage` | 今日 MCP 工具调用次数 |
 
 ### 安装
 
@@ -83,13 +82,22 @@ export ANTHROPIC_BASE_URL="https://open.bigmodel.cn/api/anthropic"
 
 4. 重启 Claude Code 会话生效。
 
+### 刷新机制
+
+脚本为**单次执行**，不包含定时器或自动刷新逻辑。Claude Code CLI 会周期性重新执行 statusLine 命令，每次执行时：
+
+1. 检查本地缓存（系统临时目录），如果缓存未过期（3 分钟内），直接使用缓存数据渲染
+2. 如果缓存已过期，并行调用 API 获取最新数据，写入缓存后渲染
+3. 如果 API 请求失败，使用过期缓存作为降级输出，避免状态栏变为空白
+4. `fetchedAt` 显示的是数据实际从 API 获取的时间（非当前时间），可通过该时间判断数据新鲜度
+
 ### 技术细节
 
 - **缓存**: API 结果缓存 3 分钟到系统临时目录，避免频繁请求
 - **超时**: 单次 API 请求超时 5 秒
-- **并行请求**: 3 个 API 并行调用，减少延迟
-- **降级处理**: API 不可用时显示 `GLM: quota unavailable`
-- **无额外依赖**: 仅使用 Node.js 内置模块（https, fs, os, path）
+- **并行请求**: 2 个 API 并行调用，减少延迟
+- **降级处理**: API 不可用时使用过期缓存降级，仅在无任何缓存时显示 `GLM: quota unavailable`
+- **无额外依赖**: 仅使用 Node.js 内置模块（http, https, fs, os, path）
 
 ### 自定义
 
@@ -110,7 +118,7 @@ Display complete GLM Coding Plan usage info in the Claude Code CLI status bar.
 ### Preview
 
 ```
- GLM PRO ｜ fetchedAt: 2min ago
+ GLM PRO ｜ fetchedAt: 14:30
  5h  usage ░░░░░░░░░░ 1% | Tokens used today: 71,397,677 ｜ reset: 07:14
  MCP calls ░░░░░░░░░░ 4% | (search 33 + web 7 + zread 0)/1000 ｜ reset: 04-30 23:54
 ```
@@ -121,8 +129,8 @@ Display complete GLM Coding Plan usage info in the Claude Code CLI status bar.
 
 | Section | Description |
 |---------|-------------|
-| **GLM PRO** | Blue badge showing plan level (PRO/LITE) |
-| **fetchedAt: 2min ago** | Data refresh time |
+| **GLM PRO** | Blue badge showing plan level (MAX/PRO/LITE) |
+| **fetchedAt: 14:30** | Data fetch time (same day: HH:MM, different day: MM-DD HH:MM, different year: YYYY-MM-DD HH:MM) |
 
 **Line 2 — Token quota + today's usage**
 
@@ -144,13 +152,12 @@ Progress bar colors: green (<70%) → yellow (70-90%) → red (>90%)
 
 ### Data Sources
 
-Three GLM platform APIs are called in parallel (using `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL` env vars):
+Two GLM platform APIs are called in parallel (using `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL` env vars):
 
 | API | Endpoint | Data |
 |-----|----------|------|
 | Quota Limit | `/api/monitor/usage/quota/limit` | Plan level, 5h Token quota, monthly MCP call quota, reset times, MCP breakdown |
 | Model Usage | `/api/monitor/usage/model-usage` | Today's model calls, Token consumption |
-| Tool Usage | `/api/monitor/usage/tool-usage` | Today's MCP tool call counts |
 
 ### Installation
 
@@ -180,13 +187,22 @@ export ANTHROPIC_BASE_URL="https://open.bigmodel.cn/api/anthropic"
 
 4. Restart Claude Code session to take effect.
 
+### Refresh Mechanism
+
+The script is **one-shot execution** — it does not include a timer or auto-refresh. Claude Code CLI periodically re-executes the statusLine command. On each execution:
+
+1. Check local cache (system temp directory). If cache is valid (within 3 minutes), render using cached data
+2. If cache is expired, fetch latest data from APIs in parallel, write to cache, then render
+3. If API requests fail, use expired cache as fallback to avoid a blank status bar
+4. `fetchedAt` shows the actual time data was fetched from the API (not current time), indicating data freshness
+
 ### Technical Details
 
 - **Cache**: API results cached for 3 minutes in system temp directory
 - **Timeout**: 5 seconds per API request
-- **Parallel requests**: All 3 APIs called in parallel to reduce latency
-- **Fallback**: Shows `GLM: quota unavailable` when API is unreachable
-- **Zero dependencies**: Uses only Node.js built-in modules (https, fs, os, path)
+- **Parallel requests**: 2 APIs called in parallel to reduce latency
+- **Fallback**: Uses expired cache when API is unreachable; only shows `GLM: quota unavailable` when no cache exists
+- **Zero dependencies**: Uses only Node.js built-in modules (http, https, fs, os, path)
 
 ### Customization
 
