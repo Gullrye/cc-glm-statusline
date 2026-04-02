@@ -21,7 +21,7 @@ function simpleHash(s) {
   return (h >>> 0).toString(36);
 }
 
-const cacheKey = [process.env.ANTHROPIC_BASE_URL || '', process.env.ANTHROPIC_AUTH_TOKEN || ''].join('');
+const cacheKey = JSON.stringify([process.env.ANTHROPIC_BASE_URL || '', process.env.ANTHROPIC_AUTH_TOKEN || '']);
 const CACHE_FILE = path.join(os.tmpdir(), 'glm-status-cache-' + simpleHash(cacheKey) + '.json');
 
 // ── ANSI ──────────────────────────────────────────────
@@ -35,6 +35,17 @@ const pctColor = (p) => (p >= 90 ? C.red : p >= 70 ? C.yellow : C.green);
 
 function pad(n) { return String(n).padStart(2, '0'); }
 
+function readStatusLineInput() {
+  if (process.stdin.isTTY) return null;
+  try {
+    const raw = fs.readFileSync(0, 'utf8').trim();
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 // ── Cache ─────────────────────────────────────────────
 function readCache() {
   try {
@@ -44,7 +55,13 @@ function readCache() {
 }
 
 function writeCache(entry) {
-  try { fs.writeFileSync(CACHE_FILE, JSON.stringify(entry)); } catch {}
+  const tmp = CACHE_FILE + '.' + process.pid + '.tmp';
+  try {
+    fs.writeFileSync(tmp, JSON.stringify(entry));
+    fs.renameSync(tmp, CACHE_FILE);
+  } catch {
+    try { fs.unlinkSync(tmp); } catch {}
+  }
 }
 
 // ── API ───────────────────────────────────────────────
@@ -133,19 +150,6 @@ function fmtResetTime(ms, skipDateIfToday) {
   return `${d.getFullYear()}-${fmtDate(d)}`;
 }
 
-function fmtFetchTime(ms) {
-  if (!ms) return '';
-  const d = new Date(ms);
-  const now = new Date();
-  if (isSameDay(d, now)) {
-    return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  }
-  if (d.getFullYear() === now.getFullYear()) {
-    return fmtDate(d);
-  }
-  return `${d.getFullYear()}-${fmtDate(d)}`;
-}
-
 function fmtBar(label, limit) {
   const p = Math.round(limit.percentage || 0);
   return `${label} ${pctColor(p)}${bar(p)} ${p}%${C.reset}`;
@@ -153,66 +157,129 @@ function fmtBar(label, limit) {
 
 function fmtReset(limit, skipDateIfToday) {
   const rt = fmtResetTime(limit.nextResetTime, skipDateIfToday);
-  return `${C.dim}reset: ${rt}${C.reset}`;
+  return `${C.dim}[reset ${rt}]${C.reset}`;
 }
 
-function joinLine(segments, pipe, sep) {
-  if (segments.length <= 1) return segments.join('');
-  const last = segments.pop();
-  return segments.join(pipe) + sep + last;
+function toNumber(value) {
+  return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function clampPercent(value) {
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function fmtContextLimit(size) {
+  if (size >= 1000 && size % 1000 === 0) {
+    return `${size / 1000}k`;
+  }
+  return size.toLocaleString();
+}
+
+function getContextUsage(status) {
+  const contextWindow = status && status.context_window;
+  const size = toNumber(contextWindow && contextWindow.context_window_size);
+  if (!size) return { text: 'ctx: --' };
+
+  // Compute exact token count from current_usage if it's a real object with numeric fields
+  const rawUsage = contextWindow && contextWindow.current_usage;
+  const usage = rawUsage && typeof rawUsage === 'object' ? rawUsage : null;
+  let usedFromUsage = null;
+  if (usage) {
+    const hasSplit = 'cache_creation_input_tokens' in usage || 'cache_read_input_tokens' in usage;
+    const inputTokens = toNumber(usage.input_tokens);
+    const cacheTokens = hasSplit
+      ? toNumber(usage.cache_creation_input_tokens) + toNumber(usage.cache_read_input_tokens)
+      : toNumber(usage.cached_input_tokens);
+    if (inputTokens > 0 || cacheTokens > 0) {
+      usedFromUsage = inputTokens + cacheTokens;
+    }
+  }
+
+  // used_percentage is the authoritative cumulative percentage for the bar
+  const hasExplicitPct = contextWindow && typeof contextWindow.used_percentage === 'number';
+  const usedPercentage = hasExplicitPct ? contextWindow.used_percentage : -1;
+  const percent = usedPercentage >= 0 ? clampPercent(usedPercentage)
+    : usedFromUsage !== null ? clampPercent((usedFromUsage / size) * 100)
+    : -1;
+  if (percent < 0) return { text: `ctx ${pctColor(0)}${bar(0)} 0%${C.reset}${C.dim} = ${C.reset}0/${fmtContextLimit(size)}` };
+
+  // Only show exact numerator when backed by real token counts
+  if (usedFromUsage !== null) {
+    return {
+      text: `ctx ${pctColor(percent)}${bar(percent)} ${percent}%${C.reset}${C.dim} = ${C.reset}${usedFromUsage.toLocaleString()}/${fmtContextLimit(size)}`,
+    };
+  }
+  return {
+    text: `ctx ${pctColor(percent)}${bar(percent)} ${percent}%${C.reset}`,
+  };
 }
 
 // ── Render ────────────────────────────────────────────
 function render(entry) {
-  const { fetchedAt, quota, model } = entry;
-  if (!quota) { process.stdout.write('GLM: quota unavailable'); return; }
+  const { fetchedAt, quota, model, contextUsage } = entry;
+  const todayTokens = model && model.totalUsage
+    ? (model.totalUsage.totalTokensUsage || 0).toLocaleString() : null;
 
   const sep = ` ${C.dim}｜${C.reset} `;
-  const pipe = ` ${C.dim}|${C.reset} `;
-  const level = (quota.level || 'pro').toUpperCase();
-  const limits = quota.limits || [];
-  const tokensLimit = limits.find(function (l) { return l.type === 'TOKENS_LIMIT'; });
-  const timeLimit = limits.find(function (l) { return l.type === 'TIME_LIMIT'; });
-
   const lines = [];
 
-  // Line 1: GLM PRO ｜ fetchedAt: 14:30
-  lines.push([
-    `${C.bg(88, 166, 255)}${C.fg(0, 0, 0)}${C.bold} GLM ${level} ${C.reset}`,
-    `${C.dim}fetchedAt: ${fmtFetchTime(fetchedAt)}${C.reset}`,
-  ].join(sep));
-
-  // Line 2: 5h  usage ░░░ 1% | Tokens used today: 71,397,677 ｜ reset: 07:14
-  const l2 = [];
-  if (tokensLimit) l2.push(fmtBar('5h  usage', tokensLimit));
-  if (model && model.totalUsage) {
-    const tokens = (model.totalUsage.totalTokensUsage || 0).toLocaleString();
-    l2.push(`Tokens used today: ${C.cyan}${tokens}${C.reset}`);
+  // Line 1: GLM PRO [fetched 14:30] or fallback
+  if (quota) {
+    const level = (quota.level || 'pro').toUpperCase();
+    lines.push(`${C.bg(88, 166, 255)}${C.fg(0, 0, 0)}${C.bold} GLM ${level} ${C.reset} ${C.dim}[fetched ${fmtResetTime(fetchedAt, true)}]${C.reset}`);
+  } else {
+    lines.push(`${C.dim}GLM: quota unavailable${C.reset}`);
   }
-  if (tokensLimit) l2.push(fmtReset(tokensLimit, true));
-  lines.push(joinLine(l2, pipe, sep));
 
-  // Line 3: MCP calls ░░░░ 4% | (search 33 + web 7 + zread 0)/1000 | reset: 04-30 23:54
-  const l3 = [];
-  if (timeLimit) l3.push(fmtBar('MCP calls', timeLimit));
-  if (timeLimit && timeLimit.usageDetails && timeLimit.usageDetails.length) {
-    const labels = { 'search-prime': 'search', 'web-reader': 'web', 'zread': 'zread' };
-    const details = timeLimit.usageDetails
-      .map(function (d) { return `${labels[d.modelCode] || d.modelCode} ${C.cyan}${d.usage}${C.reset}`; })
-      .join(` ${C.dim}+${C.reset} `);
-    l3.push(`${C.dim}(${C.reset}${details}${C.dim})/${timeLimit.usage || 0}${C.reset}`);
+  // Line 2: ctx (local data, always renders)
+  lines.push((contextUsage && contextUsage.text) || `${C.dim}ctx: --${C.reset}`);
+
+  // Line 3: 5h  ░░░░░░░░░░ 1% [reset 07:14] ｜ Tokens today: 71,397,677
+  if (quota) {
+    const limits = quota.limits || [];
+    const tokensLimit = limits.find(function (l) { return l.type === 'TOKENS_LIMIT'; });
+    const timeLimit = limits.find(function (l) { return l.type === 'TIME_LIMIT'; });
+
+    if (tokensLimit) {
+      const tBar = fmtBar('5h ', tokensLimit);
+      const tReset = fmtReset(tokensLimit, true);
+      if (todayTokens) {
+        lines.push(`${tBar} ${tReset}${sep}Tokens today: ${C.cyan}${todayTokens}${C.reset}`);
+      } else {
+        lines.push(`${tBar} ${tReset}`);
+      }
+    } else if (todayTokens) {
+      lines.push(`Tokens today: ${C.cyan}${todayTokens}${C.reset}`);
+    }
+
+    // Line 4: MCP ░░░░░░░░░░ 4% = (search33+web7+zread0)/1000 [reset 04-30 23:54]
+    if (timeLimit) {
+      const mcBar = fmtBar('MCP', timeLimit);
+      const mcReset = fmtReset(timeLimit);
+      if (timeLimit.usageDetails && timeLimit.usageDetails.length) {
+        const labels = { 'search-prime': 'search', 'web-reader': 'web', 'zread': 'zread' };
+        const details = timeLimit.usageDetails
+          .map(function (d) { return `${labels[d.modelCode] || d.modelCode}${C.cyan}${d.usage}${C.reset}`; })
+          .join(`${C.dim}+${C.reset}`);
+        lines.push(`${mcBar} ${C.dim}=${C.reset} ${C.dim}(${C.reset}${details}${C.dim})/${timeLimit.usage || 0}${C.reset} ${mcReset}`);
+      } else {
+        lines.push(`${mcBar} ${mcReset}`);
+      }
+    }
+  } else if (todayTokens) {
+    lines.push(`Tokens today: ${C.cyan}${todayTokens}${C.reset}`);
   }
-  if (timeLimit) l3.push(fmtReset(timeLimit));
-  lines.push(joinLine(l3, pipe, sep));
 
   process.stdout.write(lines.join('\n'));
 }
 
 // ── Main ──────────────────────────────────────────────
 async function main() {
+  const status = readStatusLineInput();
+  const contextUsage = getContextUsage(status);
   const cached = readCache();
   if (cached && Date.now() - cached.ts < CACHE_TTL_MS) {
-    render(cached);
+    render({ ...cached, contextUsage });
     return;
   }
 
@@ -221,21 +288,21 @@ async function main() {
   if (data.quota && data.model) {
     const entry = { ts: Date.now(), fetchedAt: data.fetchedAt, quota: data.quota, model: data.model };
     writeCache(entry);
-    render(entry);
+    render({ ...entry, contextUsage });
     return;
   }
 
   if (cached && cached.quota) {
-    render(cached);
+    render({ ...cached, contextUsage });
     return;
   }
 
   if (data.quota) {
-    render({ fetchedAt: data.fetchedAt, quota: data.quota, model: data.model });
+    render({ fetchedAt: data.fetchedAt, quota: data.quota, model: data.model, contextUsage });
     return;
   }
 
-  render({ fetchedAt: null, quota: null, model: null });
+  render({ fetchedAt: null, quota: null, model: data.model || null, contextUsage });
 }
 
 main();

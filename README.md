@@ -13,9 +13,10 @@
 ### 效果预览
 
 ```
- GLM PRO ｜ fetchedAt: 14:30
- 5h  usage ░░░░░░░░░░ 1% | Tokens used today: 71,397,677 ｜ reset: 07:14
- MCP calls ░░░░░░░░░░ 4% | (search 33 + web 7 + zread 0)/1000 ｜ reset: 04-30 23:54
+ GLM PRO [fetched 14:30]
+ ctx ███░░░░░░░ 34% = 68,421/200k
+ 5h  ░░░░░░░░░░ 1% [reset 07:14] ｜ Tokens today: 71,397,677
+ MCP ░░░░░░░░░░ 4% = (search33+web7+zread0)/1000 [reset 04-30 23:54]
 ```
 
 ### 布局说明
@@ -25,23 +26,30 @@
 | 区域 | 内容 |
 |------|------|
 | **GLM PRO** | 蓝色徽章，标识套餐等级（MAX/PRO/LITE） |
-| **fetchedAt: 14:30** | 数据获取时间（同天显示 HH:MM，跨天显示 MM-DD HH:MM，跨年显示 YYYY-MM-DD HH:MM） |
+| **[fetched 14:30]** | 数据获取时间（同天显示 HH:MM，跨天显示 MM-DD HH:MM，跨年显示 YYYY-MM-DD HH:MM） |
 
-**第二行 — Token 额度 + 今日用量**
-
-| 区域 | 内容 |
-|------|------|
-| **5h  usage ░░░░░░ 1%** | 5 小时 Token 用量进度条 + 百分比 |
-| **Tokens used today: 71,397,677** | 今日 Token 消耗总量 |
-| **reset: 07:14** | 5h 额度重置时间 |
-
-**第三行 — MCP 额度 + 明细**
+**第二行 — 上下文窗口用量**
 
 | 区域 | 内容 |
 |------|------|
-| **MCP calls ░░░░ 4%** | 月度 MCP 调用次数进度条 + 百分比 |
-| **(search 33 + web 7 + zread 0)/1000** | MCP 调用次数明细/月度总量 |
-| **reset: 04-30 23:54** | MCP 月度额度重置时间 |
+| **ctx ███░░░░░░░ 34%** | 当前上下文窗口用量进度条 + 百分比 |
+| **= 68,421/200k** | 已用/总量 |
+
+**第三行 — 5h Token 额度 + 今日用量**
+
+| 区域 | 内容 |
+|------|------|
+| **5h  ░░░░░░ 1%** | 5 小时 Token 用量进度条 + 百分比 |
+| **[reset 07:14]** | 5h 额度重置时间 |
+| **Tokens today: 71,397,677** | 今日 Token 消耗总量 |
+
+**第四行 — MCP 额度 + 明细**
+
+| 区域 | 内容 |
+|------|------|
+| **MCP ░░░░ 4%** | 月度 MCP 调用次数进度条 + 百分比 |
+| **(search33+web7+zread0)/1000** | MCP 调用次数明细/月度总量 |
+| **[reset 04-30 23:54]** | MCP 月度额度重置时间 |
 
 进度条颜色：绿色 (<70%) → 黄色 (70-90%) → 红色 (>90%)
 
@@ -118,9 +126,10 @@ Display complete GLM Coding Plan usage info in the Claude Code CLI status bar.
 ### Preview
 
 ```
- GLM PRO ｜ fetchedAt: 14:30
- 5h  usage ░░░░░░░░░░ 1% | Tokens used today: 71,397,677 ｜ reset: 07:14
- MCP calls ░░░░░░░░░░ 4% | (search 33 + web 7 + zread 0)/1000 ｜ reset: 04-30 23:54
+ GLM PRO [fetched 14:30]
+ ctx ███░░░░░░░ 34% = 68,421/200k
+ 5h  ░░░░░░░░░░ 1% [reset 07:14] ｜ Tokens today: 71,397,677
+ MCP ░░░░░░░░░░ 4% = (search33+web7+zread0)/1000 [reset 04-30 23:54]
 ```
 
 ### Layout
@@ -130,23 +139,30 @@ Display complete GLM Coding Plan usage info in the Claude Code CLI status bar.
 | Section | Description |
 |---------|-------------|
 | **GLM PRO** | Blue badge showing plan level (MAX/PRO/LITE) |
-| **fetchedAt: 14:30** | Data fetch time (same day: HH:MM, different day: MM-DD HH:MM, different year: YYYY-MM-DD HH:MM) |
+| **[fetched 14:30]** | Data fetch time (same day: HH:MM, different day: MM-DD HH:MM, different year: YYYY-MM-DD HH:MM) |
 
-**Line 2 — Token quota + today's usage**
-
-| Section | Description |
-|---------|-------------|
-| **5h  usage ░░░░░░ 1%** | 5-hour Token usage progress bar + percentage |
-| **Tokens used today: 71,397,677** | Total tokens consumed today |
-| **reset: 07:14** | 5h quota reset time |
-
-**Line 3 — MCP quota + breakdown**
+**Line 2 — Context window usage**
 
 | Section | Description |
 |---------|-------------|
-| **MCP calls ░░░░ 4%** | Monthly MCP calls progress bar + percentage |
-| **(search 33 + web 7 + zread 0)/1000** | MCP call breakdown / monthly limit |
-| **reset: 04-30 23:54** | MCP monthly quota reset time |
+| **ctx ███░░░░░░░ 34%** | Current context window usage progress bar + percentage |
+| **= 68,421/200k** | Used / total |
+
+**Line 3 — 5h Token quota + today's usage**
+
+| Section | Description |
+|---------|-------------|
+| **5h  ░░░░░░ 1%** | 5-hour Token usage progress bar + percentage |
+| **[reset 07:14]** | 5h quota reset time |
+| **Tokens today: 71,397,677** | Total tokens consumed today |
+
+**Line 4 — MCP quota + breakdown**
+
+| Section | Description |
+|---------|-------------|
+| **MCP ░░░░ 4%** | Monthly MCP calls progress bar + percentage |
+| **(search33+web7+zread0)/1000** | MCP call breakdown / monthly limit |
+| **[reset 04-30 23:54]** | MCP monthly quota reset time |
 
 Progress bar colors: green (<70%) → yellow (70-90%) → red (>90%)
 
