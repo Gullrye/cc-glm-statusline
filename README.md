@@ -16,6 +16,7 @@
  GLM PRO [fetched 14:30]
  ctx ███░░░░░░░ 34% = 68,421/200k
  5h  ░░░░░░░░░░ 1% [reset 07:14] ｜ Tokens today: 71,397,677
+ 7d  ███░░░░░░░ 18% [reset 04-02 09:59]
  MCP ░░░░░░░░░░ 4% = (search33+web7+zread0)/1000 [reset 04-30 23:54]
 ```
 
@@ -43,7 +44,14 @@
 | **[reset 07:14]** | 5h 额度重置时间 |
 | **Tokens today: 71,397,677** | 今日 Token 消耗总量 |
 
-**第四行 — MCP 额度 + 明细**
+**第四行 — 7d Token 额度（周限额）**
+
+| 区域 | 内容 |
+|------|------|
+| **7d  ███░░░ 18%** | 周（7 天）Token 用量进度条 + 百分比 |
+| **[reset 04-02 09:59]** | 周额度重置时间 |
+
+**第五行 — MCP 额度 + 明细**
 
 | 区域 | 内容 |
 |------|------|
@@ -59,7 +67,7 @@
 
 | API | 路径 | 提供数据 |
 |-----|------|----------|
-| Quota Limit | `/api/monitor/usage/quota/limit` | 套餐等级、5h Token 配额、MCP 月度调用配额、重置时间、MCP 明细 |
+| Quota Limit | `/api/monitor/usage/quota/limit` | 套餐等级、5h/7d Token 配额、MCP 月度调用配额、重置时间、MCP 明细 |
 | Model Usage | `/api/monitor/usage/model-usage` | 今日模型调用次数、Token 消耗量 |
 
 ### 安装
@@ -129,6 +137,7 @@ Display complete GLM Coding Plan usage info in the Claude Code CLI status bar.
  GLM PRO [fetched 14:30]
  ctx ███░░░░░░░ 34% = 68,421/200k
  5h  ░░░░░░░░░░ 1% [reset 07:14] ｜ Tokens today: 71,397,677
+ 7d  ███░░░░░░░ 18% [reset 04-02 09:59]
  MCP ░░░░░░░░░░ 4% = (search33+web7+zread0)/1000 [reset 04-30 23:54]
 ```
 
@@ -156,7 +165,14 @@ Display complete GLM Coding Plan usage info in the Claude Code CLI status bar.
 | **[reset 07:14]** | 5h quota reset time |
 | **Tokens today: 71,397,677** | Total tokens consumed today |
 
-**Line 4 — MCP quota + breakdown**
+**Line 4 — 7d Token quota (weekly)**
+
+| Section | Description |
+|---------|-------------|
+| **7d  ███░░░ 18%** | Weekly (7-day) Token usage progress bar + percentage |
+| **[reset 04-02 09:59]** | Weekly quota reset time |
+
+**Line 5 — MCP quota + breakdown**
 
 | Section | Description |
 |---------|-------------|
@@ -172,7 +188,7 @@ Two GLM platform APIs are called in parallel (using `ANTHROPIC_AUTH_TOKEN` and `
 
 | API | Endpoint | Data |
 |-----|----------|------|
-| Quota Limit | `/api/monitor/usage/quota/limit` | Plan level, 5h Token quota, monthly MCP call quota, reset times, MCP breakdown |
+| Quota Limit | `/api/monitor/usage/quota/limit` | Plan level, 5h/7d Token quota, monthly MCP call quota, reset times, MCP breakdown |
 | Model Usage | `/api/monitor/usage/model-usage` | Today's model calls, Token consumption |
 
 ### Installation

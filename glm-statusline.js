@@ -237,7 +237,9 @@ function render(entry) {
   // Line 3: 5h  ░░░░░░░░░░ 1% [reset 07:14] ｜ Tokens today: 71,397,677
   if (quota) {
     const limits = quota.limits || [];
-    const tokensLimit = limits.find(function (l) { return l.type === 'TOKENS_LIMIT'; });
+    const tokensLimits = limits.filter(function (l) { return l.type === 'TOKENS_LIMIT'; });
+    const tokensLimit = tokensLimits[0];
+    const weeklyLimit = tokensLimits[1];
     const timeLimit = limits.find(function (l) { return l.type === 'TIME_LIMIT'; });
 
     if (tokensLimit) {
@@ -252,7 +254,12 @@ function render(entry) {
       lines.push(`Tokens today: ${C.cyan}${todayTokens}${C.reset}`);
     }
 
-    // Line 4: MCP ░░░░░░░░░░ 4% = (search33+web7+zread0)/1000 [reset 04-30 23:54]
+    // ponytail: limits[1] = weekly TOKENS_LIMIT (unit:6); guarded so older responses without it just skip the line
+    if (weeklyLimit) {
+      lines.push(`${fmtBar('7d ', weeklyLimit)} ${fmtReset(weeklyLimit, true)}`);
+    }
+
+    // Line 5: MCP ░░░░░░░░░░ 4% = (search33+web7+zread0)/1000 [reset 04-30 23:54]
     if (timeLimit) {
       const mcBar = fmtBar('MCP', timeLimit);
       const mcReset = fmtReset(timeLimit);
